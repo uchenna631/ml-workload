@@ -85,6 +85,13 @@ async def generate(
         response.raise_for_status()
 
         return {"answer": response.json()["response"]}
+    
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Inference backend timed out",
+        ) from exc
+    
     except httpx.HTTPError:
         raise HTTPException(
             status_code=502,
