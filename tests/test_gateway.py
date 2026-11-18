@@ -3,8 +3,43 @@ import asyncio
 import httpx
 import pytest
 
-from app.main import app
+from app.main import MODEL, app, get_ollama_client
 
+
+@pytest.fixture
+def mock_ollama():
+    def configure(handler):
+        async def override_client():
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(handler),
+                base_url="http://ollama",
+            ) as client:
+                yield client
+
+        app.dependency_overrides[get_ollama_client] = override_client
+
+    yield configure
+    app.dependency_overrides.pop(get_ollama_client, None)
+
+@pytest.mark.parametrize("model_available", [True, False])
+def test_readiness_checks_model(mock_ollama, model_available):
+    def backend(req):
+        assert req.method == "GET"
+        assert req.url.path == "/api/tags"
+
+        models = [{"name": MODEL}] if model_available else []
+        return httpx.Response(200, json={"models": models})
+
+    mock_ollama(backend)
+
+    response = request("GET", "/health/ready")
+
+    if model_available:
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready"}
+    else:
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Model not available"
 
 def request(method, path, **kwargs):
     async def send():

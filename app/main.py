@@ -5,8 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="AI Inference Gateway")
-
 OLLAMA_URL = os.getenv(
     "OLLAMA_URL",
     "http://ollama.ai-platform.svc.cluster.local:11434"
@@ -53,6 +51,16 @@ async def readiness(
     try:
         response = await client.get("/api/tags", timeout=3.0)
         response.raise_for_status()
+        models = response.json().get("models", [])
+        names = {model["name"] for model in models}
+
+        if MODEL not in names:
+            raise HTTPException(
+                status_code=503,
+                detail="Model not available",
+            )
+
+        return {"status": "ready"}
     except httpx.HTTPError:
         raise HTTPException(
             status_code=503,
