@@ -51,7 +51,16 @@ async def readiness(
     try:
         response = await client.get("/api/tags", timeout=3.0)
         response.raise_for_status()
-        models = response.json().get("models", [])
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
+            raise ValueError("Invalid model listing")
+        models = payload["models"]
+        if any(
+            not isinstance(model, dict)
+            or not isinstance(model.get("name"), str)
+            for model in models
+        ):
+            raise ValueError("Invalid model listing")
         names = {model["name"] for model in models}
 
         if MODEL not in names:
@@ -66,6 +75,11 @@ async def readiness(
             status_code=503,
             detail="Ollama unavailable"
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Invalid inference backend response",
+        ) from exc
 
 
 @app.post("/generate")
@@ -84,7 +98,14 @@ async def generate(
         )
         response.raise_for_status()
 
-        return {"answer": response.json()["response"]}
+        payload = response.json()
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("response"), str)
+        ):
+            raise ValueError("Invalid backend response")
+
+        return {"answer": payload["response"]}
     
     except httpx.TimeoutException as exc:
         raise HTTPException(
@@ -97,3 +118,9 @@ async def generate(
             status_code=502,
             detail="Inference backend failure"
         )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Invalid inference backend response",
+        ) from exc

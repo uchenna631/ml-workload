@@ -147,3 +147,30 @@ def test_backend_failures(
         else failure_status
     )
     assert response.status_code == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [   
+        "",
+        {},
+        {"response": None}
+    ]
+)
+def test_invalid_response(mock_ollama,payload):
+    
+    def backend(req):
+        return httpx.Response(
+            200,
+            json=payload
+        )
+    mock_ollama(backend)
+
+    
+    response = request(
+        "POST", "/generate", json={"prompt": "Hello"}
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "Invalid inference backend response"}
